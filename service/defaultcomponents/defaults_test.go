@@ -40,6 +40,9 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector/processor/samplingprocessor/probabilisticsamplerprocessor"
 	"github.com/open-telemetry/opentelemetry-collector/processor/samplingprocessor/tailsamplingprocessor"
 	"github.com/open-telemetry/opentelemetry-collector/processor/spanprocessor"
+	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver"
+	hmcomponent "github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/component"
+	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/scraper/cpuscraper"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/jaegerreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/opencensusreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/otlpreceiver"
@@ -61,6 +64,11 @@ func TestDefaultComponents(t *testing.T) {
 		"opencensus": &opencensusreceiver.Factory{},
 		"otlp":       &otlpreceiver.Factory{},
 		"vmmetrics":  &vmmetricsreceiver.Factory{},
+		"hostmetrics": &hostmetricsreceiver.Factory{
+			ScraperFactories: map[string]hmcomponent.ScraperFactory{
+				"cpu": &cpuscraper.Factory{},
+			},
+		},
 	}
 	expectedProcessors := map[string]component.ProcessorFactoryBase{
 		"attributes":            &attributesprocessor.Factory{},

@@ -1,0 +1,14 @@
+receivers:
+  hostmetrics:
+    scrape_interval: 10s
+    scrapers:
+      cpu:
+        report_per_cpu: true
+
+zpages:
+  port: 55679
+
+exporters:
+  prometheus:
+    namespace: "hostmetrics_test"
+    address: "localhost:8888"

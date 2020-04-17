@@ -36,6 +36,9 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector/processor/samplingprocessor/probabilisticsamplerprocessor"
 	"github.com/open-telemetry/opentelemetry-collector/processor/samplingprocessor/tailsamplingprocessor"
 	"github.com/open-telemetry/opentelemetry-collector/processor/spanprocessor"
+	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver"
+	hmcomponent "github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/component"
+	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/scraper/cpuscraper"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/jaegerreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/opencensusreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/otlpreceiver"
@@ -61,6 +64,13 @@ func Components() (
 		errs = append(errs, err)
 	}
 
+	scraperFactories, err := hmcomponent.MakeScraperFactoryMap(
+		&cpuscraper.Factory{},
+	)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
 	receivers, err := component.MakeReceiverFactoryMap(
 		&jaegerreceiver.Factory{},
 		&zipkinreceiver.Factory{},
@@ -68,6 +78,7 @@ func Components() (
 		&opencensusreceiver.Factory{},
 		&otlpreceiver.Factory{},
 		&vmmetricsreceiver.Factory{},
+		&hostmetricsreceiver.Factory{ScraperFactories: scraperFactories},
 	)
 	if err != nil {
 		errs = append(errs, err)

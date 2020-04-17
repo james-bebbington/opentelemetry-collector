@@ -25,8 +25,8 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway v1.11.1
 	github.com/hashicorp/consul/api v1.2.0 // indirect
 	github.com/jaegertracing/jaeger v1.17.0
+	github.com/james-bebbington/winperfcounters v0.0.0-20200417100953-e7a978334ec0
 	github.com/jstemmer/go-junit-report v0.0.0-20190106144839-af01ea7f8024
-	github.com/mitchellh/mapstructure v1.2.2
 	github.com/open-telemetry/opentelemetry-proto v0.3.0
 	github.com/openzipkin/zipkin-go v0.2.1
 	github.com/orijtech/prometheus-go-metrics-exporter v0.0.4
@@ -48,7 +48,7 @@ require (
 	github.com/spf13/cobra v0.0.6
 	github.com/spf13/viper v1.6.2
 	github.com/streadway/quantile v0.0.0-20150917103942-b0c588724d25 // indirect
-	github.com/stretchr/testify v1.4.0
+	github.com/stretchr/testify v1.5.1
 	github.com/tcnksm/ghr v0.13.0
 	github.com/uber-go/atomic v1.4.0 // indirect
 	github.com/uber/jaeger-lib v2.2.0+incompatible
@@ -56,7 +56,7 @@ require (
 	go.opencensus.io v0.22.3
 	go.uber.org/zap v1.10.0
 	golang.org/x/net v0.0.0-20200324143707-d3edc9973b7e // indirect
-	golang.org/x/sys v0.0.0-20200408040146-ea54a3c99b9b
+	golang.org/x/sys v0.0.0-20200413165638-669c56c373c4
 	google.golang.org/api v0.10.0 // indirect
 	google.golang.org/genproto v0.0.0-20200408120641-fbb3ad325eb7
 	google.golang.org/grpc v1.28.1
