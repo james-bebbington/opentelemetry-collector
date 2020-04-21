@@ -28,7 +28,6 @@ import (
 
 // Receiver is the type used to handle metrics from VM metrics.
 type Receiver struct {
-	consumer consumer.MetricsConsumer
 	config   *Config
 	scrapers []scraper.Scraper
 	cancel   context.CancelFunc
@@ -45,7 +44,7 @@ func NewHostMetricsReceiver(
 
 	scrapers := make([]scraper.Scraper, 0)
 	for key, cfg := range config.Scrapers {
-		scraper, err := factories[key].CreateMetricsScraper(ctx, logger, cfg)
+		scraper, err := factories[key].CreateMetricsScraper(ctx, logger, cfg, consumer)
 		if err != nil {
 			return nil, fmt.Errorf("cannot create scraper: %s", err.Error())
 		}
@@ -53,7 +52,6 @@ func NewHostMetricsReceiver(
 	}
 
 	hmr := &Receiver{
-		consumer: consumer,
 		config:   config,
 		scrapers: scrapers,
 	}

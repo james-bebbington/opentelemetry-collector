@@ -146,3 +146,21 @@ func TimeseriesAndPointCount(md consumerdata.MetricsData) (int, int) {
 	}
 	return numTimeSeries, numPoints
 }
+
+// Initializes a metric with a metric slice and returns it.
+func InitializeMetricSlice(metricData data.MetricData) pdata.MetricSlice {
+	rms := metricData.ResourceMetrics()
+	rms.Resize(1)
+	rm := rms.At(0)
+	ilms := rm.InstrumentationLibraryMetrics()
+	ilms.Resize(1)
+	ilm := ilms.At(0)
+	return ilm.Metrics()
+}
+
+// AddMetric adds an uninitialized metric to the metric slice and returns it.
+func AddMetric(metrics pdata.MetricSlice) pdata.Metric {
+	len := metrics.Len()
+	metrics.Resize(len + 1)
+	return metrics.At(len)
+}

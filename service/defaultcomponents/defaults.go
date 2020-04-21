@@ -38,6 +38,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector/processor/spanprocessor"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/scraper"
+	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/scraper/cpuscraper"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/jaegerreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/opencensusreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/otlpreceiver"
@@ -63,7 +64,9 @@ func Components() (
 		errs = append(errs, err)
 	}
 
-	scraperFactories, err := scraper.MakeScraperFactoryMap()
+	scraperFactories, err := scraper.MakeScraperFactoryMap(
+		&cpuscraper.Factory{},
+	)
 	if err != nil {
 		errs = append(errs, err)
 	}

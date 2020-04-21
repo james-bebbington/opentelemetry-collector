@@ -16,6 +16,7 @@ package hostmetricsreceiver
 
 import (
 	"context"
+	"runtime"
 	"testing"
 	"time"
 
@@ -24,33 +25,68 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector/component/componenttest"
+	"github.com/open-telemetry/opentelemetry-collector/consumer/pdata"
 	"github.com/open-telemetry/opentelemetry-collector/exporter/exportertest"
+	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/internal"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/scraper"
+	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/scraper/cpuscraper"
 )
 
 func TestGatherMetrics_EndToEnd(t *testing.T) {
 	sink := &exportertest.SinkMetricsExporter{}
 
 	config := &Config{
-		DefaultCollectionInterval: 0,
-		Scrapers:                  map[string]scraper.Config{},
+		Scrapers: map[string]scraper.Config{
+			cpuscraper.TypeStr: &cpuscraper.Config{
+				ConfigBase:       scraper.ConfigBase{CollectionIntervalValue: 100 * time.Millisecond},
+				ReportPerCPU:     true,
+				ReportPerProcess: true,
+			},
+		},
 	}
 
-	factories := map[string]scraper.Factory{}
+	factories := map[string]scraper.Factory{
+		cpuscraper.TypeStr: &cpuscraper.Factory{},
+	}
 
 	receiver, err := NewHostMetricsReceiver(context.Background(), zap.NewNop(), config, factories, sink)
+
+	if runtime.GOOS != "windows" {
+		require.Error(t, err, "Expected error when creating a host metrics receiver with cpuscraper collector on a non-windows environment")
+		return
+	}
+
 	require.NoError(t, err, "Failed to create metrics receiver: %v", err)
 
 	err = receiver.Start(context.Background(), componenttest.NewNopHost())
 	require.NoError(t, err, "Failed to start metrics receiver: %v", err)
 	defer func() { assert.NoError(t, receiver.Shutdown(context.Background())) }()
 
-	// TODO consider adding mechanism to get notifed when metrics are processed so we
-	// dont have to wait here
-	<-time.After(110 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		got := sink.AllMetrics()
+		if len(got) == 0 {
+			return false
+		}
 
-	got := sink.AllMetrics()
+		assertMetricData(t, got)
+		return true
+	}, time.Second, 10*time.Millisecond, "No metrics were collected")
+}
 
-	// expect 0 MetricData objects
-	assert.Equal(t, 0, len(got))
+func assertMetricData(t *testing.T, got []pdata.Metrics) {
+	metrics := internal.AssertSingleMetricDataAndGetMetricsSlice(t, got)
+
+	// expect 1 metric
+	assert.Equal(t, 1, metrics.Len())
+
+	// for cpu seconds metric, expect 5 timeseries with appropriate labels
+	hostCPUTimeMetric := metrics.At(0)
+	expectedCPUSecondsDescriptor := cpuscraper.InitializeMetricCPUSecondsDescriptor(pdata.NewMetricDescriptor())
+	internal.AssertDescriptorEqual(t, expectedCPUSecondsDescriptor, hostCPUTimeMetric.MetricDescriptor())
+	assert.Equal(t, 5*runtime.NumCPU(), hostCPUTimeMetric.Int64DataPoints().Len())
+	internal.AssertInt64MetricLabelHasValue(t, hostCPUTimeMetric, 0, cpuscraper.StateLabel, cpuscraper.UserStateLabelValue)
+	internal.AssertInt64MetricLabelHasValue(t, hostCPUTimeMetric, 1, cpuscraper.StateLabel, cpuscraper.SystemStateLabelValue)
+	internal.AssertInt64MetricLabelHasValue(t, hostCPUTimeMetric, 2, cpuscraper.StateLabel, cpuscraper.IdleStateLabelValue)
+	internal.AssertInt64MetricLabelHasValue(t, hostCPUTimeMetric, 3, cpuscraper.StateLabel, cpuscraper.InterruptStateLabelValue)
+	internal.AssertInt64MetricLabelHasValue(t, hostCPUTimeMetric, 4, cpuscraper.StateLabel, cpuscraper.IowaitStateLabelValue)
 }

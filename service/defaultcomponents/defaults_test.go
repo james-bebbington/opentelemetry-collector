@@ -42,6 +42,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector/processor/spanprocessor"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/scraper"
+	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/scraper/cpuscraper"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/jaegerreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/opencensusreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/otlpreceiver"
@@ -64,7 +65,9 @@ func TestDefaultComponents(t *testing.T) {
 		"otlp":       &otlpreceiver.Factory{},
 		"vmmetrics":  &vmmetricsreceiver.Factory{},
 		"hostmetrics": &hostmetricsreceiver.Factory{
-			ScraperFactories: map[string]scraper.Factory{},
+			ScraperFactories: map[string]scraper.Factory{
+				"cpu": &cpuscraper.Factory{},
+			},
 		},
 	}
 	expectedProcessors := map[string]component.ProcessorFactoryBase{

@@ -17,8 +17,11 @@ package scraper
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/open-telemetry/opentelemetry-collector/consumer"
 )
 
 // Scraper gathers metrics from the host machine and converts
@@ -44,12 +47,19 @@ type Factory interface {
 
 	// CreateMetricsScraper creates a scraper based on this config.
 	// If the config is not valid, error will be returned instead.
-	CreateMetricsScraper(ctx context.Context,
-		logger *zap.Logger, cfg Config) (Scraper, error)
+	CreateMetricsScraper(
+		ctx context.Context,
+		logger *zap.Logger,
+		cfg Config,
+		consumer consumer.MetricsConsumer) (Scraper, error)
 }
 
 // Config is the configuration of a scraper.
 type Config interface {
+	// Returns the interval at which the scraper collects metrics
+	CollectionInterval() time.Duration
+	// Sets the interval at which the scraper collects metrics
+	SetCollectionInterval(time.Duration)
 }
 
 // MakeScraperFactoryMap takes a list of scraper factories and returns a map
@@ -64,4 +74,16 @@ func MakeScraperFactoryMap(factories ...Factory) (map[string]Factory, error) {
 		fMap[f.Type()] = f
 	}
 	return fMap, nil
+}
+
+type ConfigBase struct {
+	CollectionIntervalValue time.Duration `mapstructure:"collection_interval"`
+}
+
+func (c *ConfigBase) CollectionInterval() time.Duration {
+	return c.CollectionIntervalValue
+}
+
+func (c *ConfigBase) SetCollectionInterval(interval time.Duration) {
+	c.CollectionIntervalValue = interval
 }

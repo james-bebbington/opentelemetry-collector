@@ -64,6 +64,8 @@ func (f *Factory) CustomUnmarshaler() component.CustomUnmarshaler {
 			return fmt.Errorf("config type not hostmetrics.Config")
 		}
 
+		validDefaultCollectionInterval := cfg.DefaultCollectionInterval > 0
+
 		// dynamically load the individual collector configs based on the key name
 
 		cfg.Scrapers = map[string]scraper.Config{}
@@ -86,6 +88,14 @@ func (f *Factory) CustomUnmarshaler() component.CustomUnmarshaler {
 				if err != nil {
 					return fmt.Errorf("error reading settings for hostmetric scraper type %q: %v", key, err)
 				}
+			}
+
+			if collectorCfg.CollectionInterval() <= 0 {
+				if !validDefaultCollectionInterval {
+					return fmt.Errorf("positive collection_interval not supplied for host metrics scraper type %q and no default_collection_interval supplied", key)
+				}
+
+				collectorCfg.SetCollectionInterval(cfg.DefaultCollectionInterval)
 			}
 
 			cfg.Scrapers[key] = collectorCfg
