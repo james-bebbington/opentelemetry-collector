@@ -16,12 +16,14 @@ package cpuscraper
 
 import (
 	"context"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/open-telemetry/opentelemetry-collector/component/componenttest"
 	"github.com/open-telemetry/opentelemetry-collector/consumer/pdata"
 	"github.com/open-telemetry/opentelemetry-collector/exporter/exportertest"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/internal"
@@ -33,8 +35,8 @@ func TestScrapeMetrics_MinimalData(t *testing.T) {
 	createScraperAndValidateScrapedMetrics(t, &Config{}, func(t *testing.T, got []pdata.Metrics) {
 		metrics := internal.AssertSingleMetricDataAndGetMetricsSlice(t, got)
 
-		// expect 1 metric
-		assert.Equal(t, 1, metrics.Len())
+		// expect 2 metrics
+		assert.Equal(t, 2, metrics.Len())
 
 		// for cpu seconds metric, expect 5 timeseries with appropriate labels
 		hostCPUTimeMetric := metrics.At(0)
@@ -46,20 +48,71 @@ func TestScrapeMetrics_MinimalData(t *testing.T) {
 		internal.AssertInt64MetricLabelHasValue(t, hostCPUTimeMetric, 2, StateLabel, IdleStateLabelValue)
 		internal.AssertInt64MetricLabelHasValue(t, hostCPUTimeMetric, 3, StateLabel, InterruptStateLabelValue)
 		internal.AssertInt64MetricLabelHasValue(t, hostCPUTimeMetric, 4, StateLabel, IowaitStateLabelValue)
+
+		// for cpu utilization metric, expect 1 timeseries with a value < 110
+		// (value can go over 100% by a small margin)
+		hostCPUUtilizationMetric := metrics.At(1)
+		expectedCPUUtilizationDescriptor := InitializeMetricCPUUtilizationDescriptor(pdata.NewMetricDescriptor())
+		internal.AssertDescriptorEqual(t, expectedCPUUtilizationDescriptor, hostCPUUtilizationMetric.MetricDescriptor())
+		assert.Equal(t, 1, hostCPUUtilizationMetric.DoubleDataPoints().Len())
+		assert.LessOrEqual(t, hostCPUUtilizationMetric.DoubleDataPoints().At(0).Value(), float64(110))
+	})
+}
+
+func TestScrapeMetrics_AllData(t *testing.T) {
+	config := &Config{
+		ReportPerCPU:     true,
+		ReportPerProcess: true,
+	}
+
+	createScraperAndValidateScrapedMetrics(t, config, func(t *testing.T, got []pdata.Metrics) {
+		metrics := internal.AssertSingleMetricDataAndGetMetricsSlice(t, got)
+
+		// expect 3 metrics
+		assert.Equal(t, 3, metrics.Len())
+
+		// for cpu seconds metric, expect 5*cores timeseries with appropriate labels
+		hostCPUTimeMetric := metrics.At(0)
+		expectedCPUSecondsDescriptor := InitializeMetricCPUSecondsDescriptor(pdata.NewMetricDescriptor())
+		internal.AssertDescriptorEqual(t, expectedCPUSecondsDescriptor, hostCPUTimeMetric.MetricDescriptor())
+		assert.Equal(t, 5*runtime.NumCPU(), hostCPUTimeMetric.Int64DataPoints().Len())
+		internal.AssertInt64MetricLabelHasValue(t, hostCPUTimeMetric, 0, StateLabel, UserStateLabelValue)
+		internal.AssertInt64MetricLabelHasValue(t, hostCPUTimeMetric, 1, StateLabel, SystemStateLabelValue)
+		internal.AssertInt64MetricLabelHasValue(t, hostCPUTimeMetric, 2, StateLabel, IdleStateLabelValue)
+		internal.AssertInt64MetricLabelHasValue(t, hostCPUTimeMetric, 3, StateLabel, InterruptStateLabelValue)
+		internal.AssertInt64MetricLabelHasValue(t, hostCPUTimeMetric, 4, StateLabel, IowaitStateLabelValue)
+
+		// for cpu utilization metric, expect #cores timeseries each with a value < 110
+		// (value can go over 100% by a small margin)
+		hostCPUUtilizationMetric := metrics.At(1)
+		expectedCPUUtilizationDescriptor := InitializeMetricCPUUtilizationDescriptor(pdata.NewMetricDescriptor())
+		internal.AssertDescriptorEqual(t, expectedCPUUtilizationDescriptor, hostCPUUtilizationMetric.MetricDescriptor())
+		ddp := hostCPUUtilizationMetric.DoubleDataPoints()
+		assert.Equal(t, runtime.NumCPU(), ddp.Len())
+		for i := 0; i < ddp.Len(); i++ {
+			assert.LessOrEqual(t, ddp.At(i).Value(), float64(110))
+		}
+
+		// for cpu utilization per process metric, expect >1 timeseries
+		processCPUUtilizationMetric := metrics.At(2)
+		expectedProcessCPUUtilizationDescriptor := InitializeMetricProcessUtilizationDescriptor(pdata.NewMetricDescriptor())
+		internal.AssertDescriptorEqual(t, expectedProcessCPUUtilizationDescriptor, processCPUUtilizationMetric.MetricDescriptor())
+		assert.GreaterOrEqual(t, processCPUUtilizationMetric.DoubleDataPoints().Len(), 1)
 	})
 }
 
 func createScraperAndValidateScrapedMetrics(t *testing.T, config *Config, assertFn validationFn) {
-	config.SetCollectionInterval(100 * time.Millisecond)
+	// need to wait long enough to ensure windows perf counters have had
+	// enough time to generate two valid processor time measurements
+	config.SetCollectionInterval(500 * time.Millisecond)
 
 	sink := &exportertest.SinkMetricsExporter{}
 
 	scraper, err := NewCPUScraper(context.Background(), config, sink)
 	require.NoError(t, err, "Failed to create cpu scraper: %v", err)
 
-	err = scraper.Start(context.Background())
+	err = scraper.Start(context.Background(), componenttest.NewNopHost())
 	require.NoError(t, err, "Failed to start cpu scraper: %v", err)
-	defer func() { assert.NoError(t, scraper.Close(context.Background())) }()
 
 	require.Eventually(t, func() bool {
 		got := sink.AllMetrics()
@@ -67,7 +120,9 @@ func createScraperAndValidateScrapedMetrics(t *testing.T, config *Config, assert
 			return false
 		}
 
+		defer func() { assert.NoError(t, scraper.Close(context.Background())) }()
+
 		assertFn(t, got)
 		return true
-	}, time.Second, 10*time.Millisecond, "No metrics were collected")
+	}, time.Second, 50*time.Millisecond, "No metrics were collected")
 }

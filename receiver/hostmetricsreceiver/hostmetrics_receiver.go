@@ -30,7 +30,6 @@ import (
 type Receiver struct {
 	config   *Config
 	scrapers []scraper.Scraper
-	cancel   context.CancelFunc
 }
 
 // NewHostMetricsReceiver creates a new set of VM and Process Metrics
@@ -61,11 +60,9 @@ func NewHostMetricsReceiver(
 
 // Start begins scraping host metrics based on the OS platform.
 func (hmr *Receiver) Start(ctx context.Context, host component.Host) error {
-	ctx, hmr.cancel = context.WithCancel(ctx)
-
 	go func() {
 		for _, scraper := range hmr.scrapers {
-			err := scraper.Start(ctx)
+			err := scraper.Start(ctx, host)
 			if err != nil {
 				host.ReportFatalError(err)
 				return
@@ -78,8 +75,6 @@ func (hmr *Receiver) Start(ctx context.Context, host component.Host) error {
 
 // Shutdown stops the underlying host metrics scrapers.
 func (hmr *Receiver) Shutdown(ctx context.Context) error {
-	hmr.cancel()
-
 	var errs []error
 
 	for _, scraper := range hmr.scrapers {

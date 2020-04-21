@@ -22,6 +22,7 @@ import (
 	"github.com/shirou/gopsutil/cpu"
 	"go.opencensus.io/trace"
 
+	"github.com/open-telemetry/opentelemetry-collector/component"
 	"github.com/open-telemetry/opentelemetry-collector/consumer"
 	"github.com/open-telemetry/opentelemetry-collector/consumer/pdata"
 	"github.com/open-telemetry/opentelemetry-collector/consumer/pdatautil"
@@ -33,6 +34,7 @@ type Scraper struct {
 	config    *Config
 	consumer  consumer.MetricsConsumer
 	startTime time.Time
+	cancel    context.CancelFunc
 }
 
 // NewCPUScraper creates a set of CPU related metrics
@@ -41,9 +43,16 @@ func NewCPUScraper(ctx context.Context, cfg *Config, consumer consumer.MetricsCo
 }
 
 // Start
-func (c *Scraper) Start(ctx context.Context) error {
+func (c *Scraper) Start(ctx context.Context, host component.Host) error {
+	ctx, c.cancel = context.WithCancel(ctx)
+
 	go func() {
 		c.startTime = time.Now()
+		err := c.initialize()
+		if err != nil {
+			host.ReportFatalError(err)
+			return
+		}
 
 		ticker := time.NewTicker(c.config.CollectionInterval())
 		defer ticker.Stop()
@@ -63,7 +72,8 @@ func (c *Scraper) Start(ctx context.Context) error {
 
 // Close
 func (c *Scraper) Close(ctx context.Context) error {
-	return nil
+	c.cancel()
+	return c.close()
 }
 
 func (c *Scraper) scrapeMetrics(ctx context.Context) {
@@ -110,7 +120,7 @@ func (c *Scraper) scrapeAndAppendMetrics(ctx context.Context, metrics pdata.Metr
 }
 
 func (c *Scraper) scrapeSecondsMetric(ctx context.Context, metrics pdata.MetricSlice) error {
-	_, span := trace.StartSpan(ctx, "cpuscraper.scrapeCpuTimesMetric")
+	_, span := trace.StartSpan(ctx, "cpuscraper.scrapeCpuSecondsMetric")
 	defer span.End()
 
 	cpuTimes, err := cpu.Times(c.config.ReportPerCPU)

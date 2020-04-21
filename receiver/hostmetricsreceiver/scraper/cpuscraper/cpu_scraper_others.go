@@ -22,6 +22,14 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector/consumer/pdata"
 )
 
+func (c *Scraper) initialize() error {
+	return nil
+}
+
+func (c *Scraper) close() error {
+	return nil
+}
+
 func (c *Scraper) scrapeUtilizationMetric(ctx context.Context, metrics pdata.MetricSlice) error {
 	return nil
 }

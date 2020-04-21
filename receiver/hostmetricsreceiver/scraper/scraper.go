@@ -21,6 +21,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/open-telemetry/opentelemetry-collector/component"
 	"github.com/open-telemetry/opentelemetry-collector/consumer"
 )
 
@@ -31,7 +32,7 @@ type Scraper interface {
 	// setting up performance counters for initial collection,
 	// and then begins scraping metrics at the configured
 	// collection interval.
-	Start(ctx context.Context) error
+	Start(ctx context.Context, host component.Host) error
 	// Close should clean up any unmanaged resources such as
 	// performance counter handles.
 	Close(ctx context.Context) error

@@ -54,7 +54,7 @@ func (f *Factory) CustomUnmarshaler() component.CustomUnmarshaler {
 
 		// load the non-dynamic config normally
 
-		err := componentViperSection.UnmarshalExact(intoCfg)
+		err := componentViperSection.Unmarshal(intoCfg)
 		if err != nil {
 			return err
 		}

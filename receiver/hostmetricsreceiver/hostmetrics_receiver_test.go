@@ -38,7 +38,7 @@ func TestGatherMetrics_EndToEnd(t *testing.T) {
 	config := &Config{
 		Scrapers: map[string]scraper.Config{
 			cpuscraper.TypeStr: &cpuscraper.Config{
-				ConfigBase:       scraper.ConfigBase{CollectionIntervalValue: 100 * time.Millisecond},
+				ConfigBase:       scraper.ConfigBase{CollectionIntervalValue: 500 * time.Millisecond},
 				ReportPerCPU:     true,
 				ReportPerProcess: true,
 			},
@@ -60,13 +60,14 @@ func TestGatherMetrics_EndToEnd(t *testing.T) {
 
 	err = receiver.Start(context.Background(), componenttest.NewNopHost())
 	require.NoError(t, err, "Failed to start metrics receiver: %v", err)
-	defer func() { assert.NoError(t, receiver.Shutdown(context.Background())) }()
 
 	require.Eventually(t, func() bool {
 		got := sink.AllMetrics()
 		if len(got) == 0 {
 			return false
 		}
+
+		defer func() { assert.NoError(t, receiver.Shutdown(context.Background())) }()
 
 		assertMetricData(t, got)
 		return true
@@ -76,8 +77,8 @@ func TestGatherMetrics_EndToEnd(t *testing.T) {
 func assertMetricData(t *testing.T, got []pdata.Metrics) {
 	metrics := internal.AssertSingleMetricDataAndGetMetricsSlice(t, got)
 
-	// expect 1 metric
-	assert.Equal(t, 1, metrics.Len())
+	// expect 3 metrics
+	assert.Equal(t, 3, metrics.Len())
 
 	// for cpu seconds metric, expect 5 timeseries with appropriate labels
 	hostCPUTimeMetric := metrics.At(0)
@@ -89,4 +90,21 @@ func assertMetricData(t *testing.T, got []pdata.Metrics) {
 	internal.AssertInt64MetricLabelHasValue(t, hostCPUTimeMetric, 2, cpuscraper.StateLabel, cpuscraper.IdleStateLabelValue)
 	internal.AssertInt64MetricLabelHasValue(t, hostCPUTimeMetric, 3, cpuscraper.StateLabel, cpuscraper.InterruptStateLabelValue)
 	internal.AssertInt64MetricLabelHasValue(t, hostCPUTimeMetric, 4, cpuscraper.StateLabel, cpuscraper.IowaitStateLabelValue)
+
+	// for cpu utilization metric, expect #cores timeseries each with a value < 110
+	// (value can go over 100% by a small margin)
+	hostCPUUtilizationMetric := metrics.At(1)
+	expectedCPUUtilizationDescriptor := cpuscraper.InitializeMetricCPUUtilizationDescriptor(pdata.NewMetricDescriptor())
+	internal.AssertDescriptorEqual(t, expectedCPUUtilizationDescriptor, hostCPUUtilizationMetric.MetricDescriptor())
+	ddp := hostCPUUtilizationMetric.DoubleDataPoints()
+	assert.Equal(t, runtime.NumCPU(), ddp.Len())
+	for i := 0; i < ddp.Len(); i++ {
+		assert.LessOrEqual(t, ddp.At(i).Value(), float64(110))
+	}
+
+	// for cpu utilization per process metric, expect >1 timeseries
+	processCPUUtilizationMetric := metrics.At(2)
+	expectedProcessCPUUtilizationDescriptor := cpuscraper.InitializeMetricProcessUtilizationDescriptor(pdata.NewMetricDescriptor())
+	internal.AssertDescriptorEqual(t, expectedProcessCPUUtilizationDescriptor, processCPUUtilizationMetric.MetricDescriptor())
+	assert.GreaterOrEqual(t, processCPUUtilizationMetric.DoubleDataPoints().Len(), 1)
 }
