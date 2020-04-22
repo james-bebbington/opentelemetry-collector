@@ -43,6 +43,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/scraper"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/scraper/cpuscraper"
+	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/scraper/memoryscraper"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/jaegerreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/opencensusreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/otlpreceiver"
@@ -66,7 +67,8 @@ func TestDefaultComponents(t *testing.T) {
 		"vmmetrics":  &vmmetricsreceiver.Factory{},
 		"hostmetrics": &hostmetricsreceiver.Factory{
 			ScraperFactories: map[string]scraper.Factory{
-				"cpu": &cpuscraper.Factory{},
+				"cpu":    &cpuscraper.Factory{},
+				"memory": &memoryscraper.Factory{},
 			},
 		},
 	}

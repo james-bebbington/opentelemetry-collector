@@ -39,6 +39,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/scraper"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/scraper/cpuscraper"
+	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/scraper/memoryscraper"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/jaegerreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/opencensusreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/otlpreceiver"
@@ -66,6 +67,7 @@ func Components() (
 
 	scraperFactories, err := scraper.MakeScraperFactoryMap(
 		&cpuscraper.Factory{},
+		&memoryscraper.Factory{},
 	)
 	if err != nil {
 		errs = append(errs, err)
