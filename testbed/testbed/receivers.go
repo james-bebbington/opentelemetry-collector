@@ -23,6 +23,7 @@ import (
 
 	"github.com/open-telemetry/opentelemetry-collector/component"
 	"github.com/open-telemetry/opentelemetry-collector/config/configmodels"
+	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/jaegerreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/opencensusreceiver"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/otlpreceiver"
@@ -239,4 +240,56 @@ func (zr *ZipkinDataReceiver) GenConfigYAMLStr() string {
 
 func (zr *ZipkinDataReceiver) ProtocolName() string {
 	return "zipkin"
+}
+
+// TODO --- note we don't really even need this
+//
+// the usual testbed tests implement a receiver to receive metrics exported by the
+// collector - i.e. this is actually to test an equivalent exporter
+//
+// since the host metrics receiver doesn't actually "receive" metrics from anywhere
+// we don't need either of these, we just need to start up and agent that is
+// configured correctly, detect mem & cpu usage, and trace time
+
+// HostMetricsDataReceiver generates metrics about the host.
+type HostMetricsDataReceiver struct {
+	DataReceiverBase
+	receiver *hostmetricsreceiver.Receiver
+}
+
+func NewHostMetricsDataReceiver() *HostMetricsDataReceiver {
+	return &HostMetricsDataReceiver{DataReceiverBase: DataReceiverBase{Port: 0}}
+}
+
+func (hmr *HostMetricsDataReceiver) Start(tc *MockTraceConsumer, mc *MockMetricConsumer) error {
+	var err error
+	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
+	f := hostmetricsreceiver.NewFactory()
+	r, err := f.CreateMetricsReceiver(context.Background(), params, f.CreateDefaultConfig(), mc)
+	if err != nil {
+		return err
+	}
+
+	hmr.receiver = r.(*hostmetricsreceiver.Receiver)
+
+	return hmr.receiver.Start(context.Background(), hmr)
+}
+
+func (hmr *HostMetricsDataReceiver) Stop() {
+	if hmr.receiver != nil {
+		if err := hmr.receiver.Shutdown(context.Background()); err != nil {
+			log.Printf("Cannot stop Host Metrics receiver: %s", err.Error())
+		}
+	}
+}
+
+func (zr *HostMetricsDataReceiver) GenConfigYAMLStr() string {
+	// Note that this generates an exporter config for agent.
+	return `
+  prometheus:
+    endpoint: 127.0.0.0:9090`
+}
+
+func (zr *HostMetricsDataReceiver) ProtocolName() string {
+	return "prometheus"
 }
