@@ -16,7 +16,10 @@ package memoryscraper
 
 import "github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/scraper"
 
-// Config relating to CPU Metric Scrapeion.
+// Config relating to Memory Metric Scraping.
 type Config struct {
 	scraper.ConfigBase `mapstructure:"squash"`
+
+	// If `true`, additional stats will be generated for each running process.
+	ReportPerProcess bool `mapstructure:"report_per_process"`
 }

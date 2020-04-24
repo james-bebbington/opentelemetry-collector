@@ -25,7 +25,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/scraper"
 )
 
-// This file implements Factory for CPU scraper.
+// This file implements Factory for Memory scraper.
 
 const (
 	// The value of "type" key in configuration.
@@ -54,10 +54,10 @@ func (f *Factory) CreateMetricsScraper(
 	consumer consumer.MetricsConsumer,
 ) (scraper.Scraper, error) {
 	if runtime.GOOS != "windows" {
-		return nil, errors.New("cpu scraper is currently only supported on windows")
+		return nil, errors.New("memory scraper is currently only supported on windows")
 	}
 
 	cfg := config.(*Config)
 
-	return NewCPUScraper(ctx, cfg, consumer)
+	return NewMemoryScraper(ctx, cfg, consumer)
 }

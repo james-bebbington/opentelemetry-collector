@@ -18,7 +18,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector/consumer/pdata"
 )
 
-// cpu metric constants.
+// memory metric constants.
 
 var (
 	StateLabel       = "state"
@@ -73,18 +73,15 @@ func InitializeMetricMemoryUtilizationDescriptor(descriptor pdata.MetricDescript
 	descriptor.SetDescription("Percent of memory utilized")
 	descriptor.SetUnit("1")
 	descriptor.SetType(pdata.MetricTypeGaugeDouble)
-	descriptor.LabelsMap().InitFromMap(map[string]string{
-		ProcessNameLabel: "Name of the process",
-	})
 	return descriptor
 }
 
-func InitializeMetricProcessUtilizationDescriptor(descriptor pdata.MetricDescriptor) pdata.MetricDescriptor {
+func InitializeMetricProcessUsedDescriptor(descriptor pdata.MetricDescriptor) pdata.MetricDescriptor {
 	descriptor.InitEmpty()
-	descriptor.SetName("process/memory/utilization")
-	descriptor.SetDescription("Percent of memory utilized per process")
-	descriptor.SetUnit("1")
-	descriptor.SetType(pdata.MetricTypeGaugeDouble)
+	descriptor.SetName("process/memory/used")
+	descriptor.SetDescription("Bytes of memory in use by the process.")
+	descriptor.SetUnit("bytes")
+	descriptor.SetType(pdata.MetricTypeGaugeInt64)
 	descriptor.LabelsMap().InitFromMap(map[string]string{
 		ProcessNameLabel: "Name of the process",
 	})

@@ -6,7 +6,11 @@ receivers:
   hostmetrics:
     default_collection_interval: 1s
     scrapers:
+      cpu:
+        report_per_cpu: true
+        report_per_process: true
       memory:
+        report_per_process: true
 
 exporters:
   logging:

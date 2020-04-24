@@ -17,7 +17,6 @@ package memoryscraper
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"time"
 
 	"github.com/shirou/gopsutil/mem"
@@ -30,7 +29,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector/internal/data"
 )
 
-// Scraper for CPU Metrics
+// Scraper for Memory Metrics
 type Scraper struct {
 	config    *Config
 	consumer  consumer.MetricsConsumer
@@ -38,8 +37,8 @@ type Scraper struct {
 	cancel    context.CancelFunc
 }
 
-// NewCPUScraper creates a set of CPU related metrics
-func NewCPUScraper(ctx context.Context, cfg *Config, consumer consumer.MetricsConsumer) (*Scraper, error) {
+// NewMemoryScraper creates a set of Memory related metrics
+func NewMemoryScraper(ctx context.Context, cfg *Config, consumer consumer.MetricsConsumer) (*Scraper, error) {
 	return &Scraper{config: cfg, consumer: consumer}, nil
 }
 
@@ -100,7 +99,26 @@ func (c *Scraper) scrapeMetrics(ctx context.Context) {
 }
 
 func (c *Scraper) scrapeAndAppendMetrics(ctx context.Context, metrics pdata.MetricSlice) error {
-	_, span := trace.StartSpan(ctx, "cpuscraper.scrapeMemoryMetrics")
+	_, span := trace.StartSpan(ctx, "memoryscraper.scrapeMetrics")
+	defer span.End()
+
+	err := c.scrapeHostMemoryMetrics(ctx, metrics)
+	if err != nil {
+		return err
+	}
+
+	if c.config.ReportPerProcess {
+		err = c.scrapeMemoryPerProcessMetric(ctx, metrics)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Scraper) scrapeHostMemoryMetrics(ctx context.Context, metrics pdata.MetricSlice) error {
+	_, span := trace.StartSpan(ctx, "memoryscraper.scrapeTotalAndUtilizationMemoryMetrics")
 	defer span.End()
 
 	memInfo, err := mem.VirtualMemory()
@@ -109,30 +127,46 @@ func (c *Scraper) scrapeAndAppendMetrics(ctx context.Context, metrics pdata.Metr
 	}
 
 	metric := pdatautil.AddMetric(metrics)
-	initializeMetricVirtualMemoryFrom(memInfo, c.startTime, metric)
+	initializeMetricUsedMemoryFrom(memInfo, c.startTime, metric)
+
+	metric = pdatautil.AddMetric(metrics)
+	initializeMetricTotalMemoryFrom(memInfo, c.startTime, metric)
+
+	metric = pdatautil.AddMetric(metrics)
+	initializeMetricMemoryUtilizationFrom(memInfo, c.startTime, metric)
 	return nil
 }
 
-func initializeMetricVirtualMemoryFrom(memInfo *mem.VirtualMemoryStat, startTime time.Time, metric pdata.Metric) {
+func initializeMetricUsedMemoryFrom(memInfo *mem.VirtualMemoryStat, startTime time.Time, metric pdata.Metric) {
 	InitializeMetricMemoryUsedDescriptor(metric.MetricDescriptor())
 
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
 	idps := metric.Int64DataPoints()
-	idps.Resize(4)
-	for i, stateTime := range []struct {
-		label    string
-		bytesVal uint64
-	}{
-		{"total", memInfo.Total},
-		{"available", memInfo.Available},
-		{"used", memInfo.Used},
-		{"utilization", uint64(memInfo.UsedPercent)},
-	} {
-		idp := idps.At(i)
-		idp.LabelsMap().InitFromMap(map[string]string{StateLabel: stateTime.label})
-		idp.SetStartTime(pdata.TimestampUnixNano(uint64(startTime.UnixNano())))
-		idp.SetTimestamp(pdata.TimestampUnixNano(uint64(time.Now().UnixNano())))
-		idp.SetValue(int64(stateTime.bytesVal))
-	}
+	idps.Resize(1)
+	idp := idps.At(0)
+	idp.LabelsMap().InitFromMap(map[string]string{})
+	idp.SetStartTime(pdata.TimestampUnixNano(uint64(startTime.UnixNano())))
+	idp.SetTimestamp(pdata.TimestampUnixNano(uint64(time.Now().UnixNano())))
+	idp.SetValue(int64(memInfo.Used))
+}
+
+func initializeMetricTotalMemoryFrom(memInfo *mem.VirtualMemoryStat, startTime time.Time, metric pdata.Metric) {
+	InitializeMetricMemoryTotalDescriptor(metric.MetricDescriptor())
+
+	idps := metric.Int64DataPoints()
+	idps.Resize(1)
+	idp := idps.At(0)
+	idp.SetStartTime(pdata.TimestampUnixNano(uint64(startTime.UnixNano())))
+	idp.SetTimestamp(pdata.TimestampUnixNano(uint64(time.Now().UnixNano())))
+	idp.SetValue(int64(memInfo.Total))
+}
+
+func initializeMetricMemoryUtilizationFrom(memInfo *mem.VirtualMemoryStat, startTime time.Time, metric pdata.Metric) {
+	InitializeMetricMemoryUtilizationDescriptor(metric.MetricDescriptor())
+
+	idps := metric.DoubleDataPoints()
+	idps.Resize(1)
+	idp := idps.At(0)
+	idp.SetStartTime(pdata.TimestampUnixNano(uint64(startTime.UnixNano())))
+	idp.SetTimestamp(pdata.TimestampUnixNano(uint64(time.Now().UnixNano())))
+	idp.SetValue(float64(memInfo.Used) / float64(memInfo.Total))
 }
