@@ -29,6 +29,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/internal/scraper/cpuscraper"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/internal/scraper/diskscraper"
 	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/internal/scraper/memoryscraper"
+	"github.com/open-telemetry/opentelemetry-collector/receiver/hostmetricsreceiver/internal/scraper/networkscraper"
 )
 
 func TestGatherMetrics_EndToEnd(t *testing.T) {
@@ -40,19 +41,23 @@ func TestGatherMetrics_EndToEnd(t *testing.T) {
 				ConfigSettings: internal.ConfigSettings{CollectionIntervalValue: 100 * time.Millisecond},
 				ReportPerCPU:   true,
 			},
+			diskscraper.TypeStr: &diskscraper.Config{
+				ConfigSettings: internal.ConfigSettings{CollectionIntervalValue: 100 * time.Millisecond},
+			},
 			memoryscraper.TypeStr: &memoryscraper.Config{
 				ConfigSettings: internal.ConfigSettings{CollectionIntervalValue: 100 * time.Millisecond},
 			},
-			diskscraper.TypeStr: &diskscraper.Config{
+			networkscraper.TypeStr: &networkscraper.Config{
 				ConfigSettings: internal.ConfigSettings{CollectionIntervalValue: 100 * time.Millisecond},
 			},
 		},
 	}
 
 	factories := map[string]internal.Factory{
-		cpuscraper.TypeStr:    &cpuscraper.Factory{},
-		memoryscraper.TypeStr: &memoryscraper.Factory{},
-		diskscraper.TypeStr:   &diskscraper.Factory{},
+		cpuscraper.TypeStr:     &cpuscraper.Factory{},
+		diskscraper.TypeStr:    &diskscraper.Factory{},
+		memoryscraper.TypeStr:  &memoryscraper.Factory{},
+		networkscraper.TypeStr: &networkscraper.Factory{},
 	}
 
 	receiver, err := NewHostMetricsReceiver(context.Background(), zap.NewNop(), config, factories, sink)
@@ -67,8 +72,8 @@ func TestGatherMetrics_EndToEnd(t *testing.T) {
 
 	got := sink.AllMetrics()
 
-	// expect 3 MetricData objects
-	assert.Equal(t, 3, len(got))
+	// expect 4 MetricData objects
+	assert.Equal(t, 4, len(got))
 
 	// extract the names of all returned metrics
 	metricNames := make(map[string]bool)
@@ -79,8 +84,8 @@ func TestGatherMetrics_EndToEnd(t *testing.T) {
 		}
 	}
 
-	// expect 5 metrics
-	assert.Equal(t, 5, len(metricNames))
+	// expect 10 metrics
+	assert.Equal(t, 10, len(metricNames))
 
 	// expected metric names
 	assert.Contains(t, metricNames, "host/cpu/time")
@@ -88,4 +93,9 @@ func TestGatherMetrics_EndToEnd(t *testing.T) {
 	assert.Contains(t, metricNames, "host/disk/bytes")
 	assert.Contains(t, metricNames, "host/disk/ops")
 	assert.Contains(t, metricNames, "host/disk/time")
+	assert.Contains(t, metricNames, "host/network/packets")
+	assert.Contains(t, metricNames, "host/network/dropped_packets")
+	assert.Contains(t, metricNames, "host/network/errors")
+	assert.Contains(t, metricNames, "host/network/bytes")
+	assert.Contains(t, metricNames, "host/network/tcp_connections")
 }
