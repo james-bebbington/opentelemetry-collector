@@ -1,0 +1,24 @@
+receivers:
+  hostmetrics:
+    default_collection_interval: 50ms
+    scrapers:
+      cpu:
+        report_per_cpu: true
+      disk:
+      memory:
+      network:
+
+exporters:
+  opencensus:
+    endpoint: "localhost:56565"
+  logging:
+    loglevel: info
+
+processors:
+  queued_retry:
+
+service:
+  pipelines:
+    metrics:
+      receivers: [hostmetrics]
+      exporters: [opencensus,logging]

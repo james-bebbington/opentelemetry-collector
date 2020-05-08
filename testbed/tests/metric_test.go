@@ -18,6 +18,7 @@ package tests
 // coded in this file or use scenarios from perf_scenarios.go.
 
 import (
+	"path"
 	"testing"
 
 	"github.com/open-telemetry/opentelemetry-collector/testbed/testbed"
@@ -78,4 +79,19 @@ func TestMetric10kDPS(t *testing.T) {
 		})
 	}
 
+}
+
+func TestHostMetricsReceiver(t *testing.T) {
+	tc := testbed.NewTestCase(
+		t,
+		nil,
+		testbed.NewOCDataReceiver(testbed.DefaultOCPort),
+		testbed.WithConfigFile(path.Join("testdata", "hostmetrics-agent.yaml")),
+	)
+	defer tc.Stop()
+
+	tc.SetResourceLimits(testbed.ResourceSpec{ExpectedMaxCPU: 25, ExpectedMaxRAM: 50})
+	tc.StartAgent()
+
+	tc.Sleep(tc.Duration)
 }

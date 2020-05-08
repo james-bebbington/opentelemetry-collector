@@ -21,6 +21,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -195,14 +196,22 @@ func (cp *childProcess) stop() {
 
 		cp.isStopped = true
 
-		log.Printf("Gracefully terminating %s pid=%d, sending SIGTEM...", cp.name, cp.cmd.Process.Pid)
-
 		// Notify resource monitor to stop.
 		close(cp.doneSignal)
 
-		// Gracefully signal process to stop.
-		if err := cp.cmd.Process.Signal(syscall.SIGTERM); err != nil {
-			log.Printf("Cannot send SIGTEM: %s", err.Error())
+		// Attempt to gracefully signal process to stop.
+		var terminateSignal os.Signal
+		if runtime.GOOS != "windows" {
+			// https://github.com/golang/go/issues/6720
+			terminateSignal = syscall.SIGTERM
+			log.Printf("Gracefully terminating %s pid=%d, sending SIGTEM...", cp.name, cp.cmd.Process.Pid)
+		} else {
+			terminateSignal = syscall.SIGKILL
+			log.Printf("Forcefully terminating %s pid=%d, sending SIGKILL...", cp.name, cp.cmd.Process.Pid)
+		}
+
+		if err := cp.cmd.Process.Signal(terminateSignal); err != nil {
+			log.Printf("Cannot send signal %q: %s", terminateSignal, err.Error())
 		}
 
 		finished := make(chan struct{})

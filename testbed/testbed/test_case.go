@@ -135,9 +135,11 @@ func NewTestCase(
 		tc.t.Fatalf("Cannot resolve filename: %s", err.Error())
 	}
 
-	tc.LoadGenerator, err = NewLoadGenerator(sender)
-	if err != nil {
-		t.Fatalf("Cannot create generator: %s", err.Error())
+	if sender != nil {
+		tc.LoadGenerator, err = NewLoadGenerator(sender)
+		if err != nil {
+			t.Fatalf("Cannot create generator: %s", err.Error())
+		}
 	}
 
 	tc.MockBackend = NewMockBackend(tc.composeTestResultFileName("backend.log"), receiver)
@@ -201,11 +203,13 @@ func (tc *TestCase) StartAgent(args ...string) {
 
 	// Wait for agent to start. We consider the agent started when we can
 	// connect to the port to which we intend to send load.
-	tc.WaitFor(func() bool {
-		_, err := net.Dial("tcp",
-			fmt.Sprintf("localhost:%d", tc.LoadGenerator.sender.GetCollectorPort()))
-		return err == nil
-	})
+	if tc.LoadGenerator != nil {
+		tc.WaitFor(func() bool {
+			_, err := net.Dial("tcp",
+				fmt.Sprintf("localhost:%d", tc.LoadGenerator.sender.GetCollectorPort()))
+			return err == nil
+		})
+	}
 }
 
 // StopAgent stops agent process.
@@ -254,7 +258,9 @@ func (tc *TestCase) AgentMemoryInfo() (uint32, uint32, error) {
 // Stop stops the load generator, the agent and the backend.
 func (tc *TestCase) Stop() {
 	// Stop all components
-	tc.StopLoad()
+	if tc.LoadGenerator != nil {
+		tc.StopLoad()
+	}
 	tc.StopAgent()
 	tc.StopBackend()
 
@@ -279,11 +285,16 @@ func (tc *TestCase) Stop() {
 	// Remove "Test" prefix from test name.
 	testName := tc.t.Name()[4:]
 
+	var sentSpanCount uint64
+	if tc.LoadGenerator != nil {
+		tc.LoadGenerator.DataItemsSent()
+	}
+
 	results.Add(tc.t.Name(), &TestResult{
 		testName:          testName,
 		result:            result,
 		receivedSpanCount: tc.MockBackend.DataItemsReceived(),
-		sentSpanCount:     tc.LoadGenerator.DataItemsSent(),
+		sentSpanCount:     sentSpanCount,
 		duration:          time.Since(tc.startTime),
 		cpuPercentageAvg:  rc.CPUPercentAvg,
 		cpuPercentageMax:  rc.CPUPercentMax,

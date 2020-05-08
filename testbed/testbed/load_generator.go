@@ -115,6 +115,10 @@ func (lg *LoadGenerator) Stop() {
 
 // GetStats returns the stats as a printable string.
 func (lg *LoadGenerator) GetStats() string {
+	if lg == nil {
+		return ""
+	}
+
 	return fmt.Sprintf("Sent:%5d items", atomic.LoadUint64(&lg.dataItemsSent))
 }
 
