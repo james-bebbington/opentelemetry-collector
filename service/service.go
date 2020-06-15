@@ -32,6 +32,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenterror"
@@ -80,6 +81,9 @@ type Application struct {
 	factories config.Factories
 	config    *configmodels.Config
 
+	// signalsChannel is used to receive termination signals from the OS.
+	signalsChannel chan os.Signal
+
 	// stopTestChan is used to terminate the application in end to end tests.
 	stopTestChan chan struct{}
 
@@ -118,6 +122,8 @@ type Parameters struct {
 	// If it is not provided the default factory (FileLoaderConfigFactory) is used.
 	// The default factory loads the configuration specified as a command line flag.
 	ConfigFactory ConfigFactory
+	// LoggingHooks provides a way to supply a hook into logging events
+	LoggingHooks []func(zapcore.Entry) error
 }
 
 // ConfigFactory creates config.
@@ -156,7 +162,7 @@ func New(params Parameters) (*Application, error) {
 		Use:  params.ApplicationStartInfo.ExeName,
 		Long: params.ApplicationStartInfo.LongName,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := app.init()
+			err := app.init(params.LoggingHooks...)
 			if err != nil {
 				return err
 			}
@@ -228,8 +234,8 @@ func (app *Application) RegisterZPages(mux *http.ServeMux, pathPrefix string) {
 	mux.HandleFunc(path.Join(pathPrefix, extensionzPath), app.handleExtensionzRequest)
 }
 
-func (app *Application) init() error {
-	l, err := newLogger()
+func (app *Application) init(hooks ...func(zapcore.Entry) error) error {
+	l, err := newLogger(hooks...)
 	if err != nil {
 		return errors.Wrap(err, "failed to get logger")
 	}
@@ -252,9 +258,9 @@ func (app *Application) setupTelemetry(ballastSizeBytes uint64) error {
 func (app *Application) runAndWaitForShutdownEvent() {
 	app.logger.Info("Everything is ready. Begin running and processing data.")
 
-	// Plug SIGTERM signal into a channel.
-	signalsChannel := make(chan os.Signal, 1)
-	signal.Notify(signalsChannel, os.Interrupt, syscall.SIGTERM)
+	// plug SIGTERM signal into a channel.
+	app.signalsChannel = make(chan os.Signal, 1)
+	signal.Notify(app.signalsChannel, os.Interrupt, syscall.SIGTERM)
 
 	// set the channel to stop testing.
 	app.stopTestChan = make(chan struct{})
@@ -264,7 +270,7 @@ func (app *Application) runAndWaitForShutdownEvent() {
 	select {
 	case err := <-app.asyncErrorChannel:
 		app.logger.Error("Asynchronous error received, terminating process", zap.Error(err))
-	case s := <-signalsChannel:
+	case s := <-app.signalsChannel:
 		app.logger.Info("Received signal from OS", zap.String("signal", s.String()))
 	case <-app.stopTestChan:
 		app.logger.Info("Received stop test request")

@@ -17,6 +17,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 
 	"go.opentelemetry.io/collector/internal/version"
@@ -24,15 +25,11 @@ import (
 	"go.opentelemetry.io/collector/service/defaultcomponents"
 )
 
-func main() {
-	handleErr := func(message string, err error) {
-		if err != nil {
-			log.Fatalf("%s: %v", message, err)
-		}
-	}
-
+func applicationParameters() (service.Parameters, error) {
 	factories, err := defaultcomponents.Components()
-	handleErr("Failed to build default components", err)
+	if err != nil {
+		return service.Parameters{}, fmt.Errorf("failed to build default components: %v", err)
+	}
 
 	info := service.ApplicationStartInfo{
 		ExeName:  "otelcol",
@@ -41,9 +38,17 @@ func main() {
 		GitHash:  version.GitHash,
 	}
 
-	svc, err := service.New(service.Parameters{ApplicationStartInfo: info, Factories: factories})
-	handleErr("Failed to construct the application", err)
+	return service.Parameters{Factories: factories, ApplicationStartInfo: info}, nil
+}
 
-	err = svc.Start()
-	handleErr("Application run finished with error", err)
+func runInteractive(params service.Parameters) {
+	app, err := service.New(params)
+	if err != nil {
+		log.Fatalf("failed to construct the application: %v", err)
+	}
+
+	err = app.Start()
+	if err != nil {
+		log.Fatalf("application run finished with error: %v", err)
+	}
 }

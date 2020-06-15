@@ -30,6 +30,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config"
@@ -42,7 +43,13 @@ func TestApplication_Start(t *testing.T) {
 	factories, err := defaultcomponents.Components()
 	require.NoError(t, err)
 
-	app, err := New(Parameters{Factories: factories, ApplicationStartInfo: ApplicationStartInfo{}})
+	loggingHookCalled := false
+	hook := func(entry zapcore.Entry) error {
+		loggingHookCalled = true
+		return nil
+	}
+
+	app, err := New(Parameters{Factories: factories, ApplicationStartInfo: ApplicationStartInfo{}, LoggingHooks: []func(entry zapcore.Entry) error{hook}})
 	require.NoError(t, err)
 	assert.Equal(t, app.rootCmd, app.Command())
 
@@ -65,6 +72,7 @@ func TestApplication_Start(t *testing.T) {
 	assert.Equal(t, Running, <-app.GetStateChannel())
 	require.True(t, isAppAvailable(t, "http://localhost:13133"))
 	assert.Equal(t, app.logger, app.GetLogger())
+	assert.True(t, loggingHookCalled)
 
 	assertMetricsPrefix(t, testPrefix, metricsPort)
 
