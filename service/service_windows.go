@@ -21,9 +21,8 @@ import (
 	"log"
 	"syscall"
 
+	svc "github.com/kardianos/service"
 	"go.uber.org/zap/zapcore"
-	"golang.org/x/sys/windows/svc"
-	"golang.org/x/sys/windows/svc/eventlog"
 )
 
 type WindowsService struct {
@@ -31,77 +30,61 @@ type WindowsService struct {
 	params Parameters
 }
 
-func NewWindowsService(params Parameters) *WindowsService {
-	return &WindowsService{params: params}
-}
-
-func (s *WindowsService) Execute(args []string, requests <-chan svc.ChangeRequest, changes chan<- svc.Status) (ssec bool, errno uint32) {
-	if len(args) == 0 {
-		log.Fatal("expected first argument supplied to service.Execute to be the service name")
+func RunWindowsService(params Parameters) error {
+	// Can supply any non-empty service name when startup is invoked through Service Control Manager
+	// directly, however that name will be returned when the service name is referenced internally
+	// (e.g. as the Event Viewer Logger Source)
+	s, err := svc.New(&WindowsService{params: params}, &svc.Config{Name: "OpenTelemetry Collector"})
+	if err != nil {
+		return err
 	}
 
-	changes <- svc.Status{State: svc.StartPending}
-	s.start(args[0], s.params)
-	changes <- svc.Status{State: svc.Running, Accepts: svc.AcceptStop | svc.AcceptShutdown}
-
-	for req := range requests {
-		switch req.Cmd {
-		case svc.Interrogate:
-			changes <- req.CurrentStatus
-		case svc.Stop, svc.Shutdown:
-			s.stop()
-			return
-		default:
-			log.Fatalf(fmt.Sprintf("unexpected control request #%d", req))
-		}
-	}
-
-	return
+	return s.Run()
 }
 
-func (s *WindowsService) start(logSourceName string, params Parameters) {
-	var err error
-	s.app, err = newWithEventViewerLoggingHook(logSourceName, params)
+func (m *WindowsService) Start(s svc.Service) error {
+	logger, err := s.Logger(make(chan error, 500))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	m.app, err = newWithEventViewerLoggingHook(logger, m.params)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// app.Start blocks until receiving a SIGTERM signal, so we need to start it asynchronously
 	go func() {
-		err = s.app.Start()
+		err = m.app.Start()
 		if err != nil {
 			log.Fatalf("application run finished with error: %v", err)
 		}
 	}()
 
 	// wait until the app is in the Running state
-	for state := range s.app.GetStateChannel() {
+	for state := range m.app.GetStateChannel() {
 		if state == Running {
 			break
 		}
 	}
+
+	return nil
 }
 
-func (s *WindowsService) stop() {
-	// simulate a SIGTERM signal to terminate the application
-	s.app.signalsChannel <- syscall.SIGTERM
+func (m *WindowsService) Stop(s svc.Service) error {
+	m.app.signalsChannel <- syscall.SIGTERM
 
 	// wait until the app is in the Closed state
-	for state := range s.app.GetStateChannel() {
+	for state := range m.app.GetStateChannel() {
 		if state == Closed {
 			break
 		}
 	}
 
-	s.app = nil
+	return nil
 }
 
-func newWithEventViewerLoggingHook(serviceName string, params Parameters) (*Application, error) {
-	elog, err := eventlog.Open(serviceName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open event log: %v", err)
-	}
-
+func newWithEventViewerLoggingHook(logger svc.Logger, params Parameters) (*Application, error) {
 	params.LoggingHooks = append(
 		params.LoggingHooks,
 		func(entry zapcore.Entry) error {
@@ -110,13 +93,13 @@ func newWithEventViewerLoggingHook(serviceName string, params Parameters) (*Appl
 			switch entry.Level {
 			case zapcore.FatalLevel, zapcore.PanicLevel, zapcore.DPanicLevel:
 				// golang.org/x/sys/windows/svc/eventlog does not support Critical level event logs
-				return elog.Error(3, msg)
+				return logger.Error(msg)
 			case zapcore.ErrorLevel:
-				return elog.Error(3, msg)
+				return logger.Error(msg)
 			case zapcore.WarnLevel:
-				return elog.Warning(2, msg)
+				return logger.Warning(msg)
 			case zapcore.InfoLevel:
-				return elog.Info(1, msg)
+				return logger.Info(msg)
 			}
 
 			// ignore Debug level logs

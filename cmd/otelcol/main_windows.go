@@ -43,8 +43,7 @@ func main() {
 }
 
 func runService(params service.Parameters) {
-	// do not need to supply service name when startup is invoked through Service Control Manager directly
-	err := svc.Run("", service.NewWindowsService(params))
+	err := service.RunWindowsService(params)
 	if err != nil {
 		log.Fatalf("failed to start service: %v", err)
 	}
