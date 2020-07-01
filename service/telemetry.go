@@ -43,8 +43,9 @@ type appTelemetryExporter interface {
 }
 
 type appTelemetry struct {
-	views  []*view.View
-	server *http.Server
+	views           []*view.View
+	server          *http.Server
+	shutdownChannel chan struct{}
 }
 
 func (tel *appTelemetry) init(asyncErrorChannel chan<- error, ballastSizeBytes uint64, logger *zap.Logger) error {
@@ -107,16 +108,15 @@ func (tel *appTelemetry) init(asyncErrorChannel chan<- error, ballastSizeBytes u
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", pe)
 
-	tel.server = &http.Server{
-		Addr:    metricsAddr,
-		Handler: mux,
-	}
+	tel.server = &http.Server{Addr: metricsAddr, Handler: mux}
+	tel.shutdownChannel = make(chan struct{})
 
 	go func() {
 		serveErr := tel.server.ListenAndServe()
 		if serveErr != nil && serveErr != http.ErrServerClosed {
 			asyncErrorChannel <- serveErr
 		}
+		tel.shutdownChannel <- struct{}{}
 	}()
 
 	return nil
@@ -126,7 +126,12 @@ func (tel *appTelemetry) shutdown() error {
 	view.Unregister(tel.views...)
 
 	if tel.server != nil {
-		return tel.server.Close()
+		err := tel.server.Close()
+
+		// wait until the server has shutdown
+		<-tel.shutdownChannel
+		tel.server = nil
+		return err
 	}
 
 	return nil

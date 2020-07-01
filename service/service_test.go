@@ -475,6 +475,8 @@ func TestApplication_GetExtensions(t *testing.T) {
 	// Stop the Application.
 	close(app.stopTestChan)
 	<-appDone
+	assert.Equal(t, Closing, <-app.GetStateChannel())
+	assert.Equal(t, Closed, <-app.GetStateChannel())
 }
 
 func TestApplication_GetExporters(t *testing.T) {
@@ -514,6 +516,8 @@ func TestApplication_GetExporters(t *testing.T) {
 	// Stop the Application.
 	close(app.stopTestChan)
 	<-appDone
+	assert.Equal(t, Closing, <-app.GetStateChannel())
+	assert.Equal(t, Closed, <-app.GetStateChannel())
 }
 
 func constructMimumalOpConfig(t *testing.T, factories config.Factories) *configmodels.Config {
