@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/collector/component/componenterror"
@@ -231,12 +232,12 @@ func (s *scraper) ScrapeMetrics(_ context.Context) (pdata.MetricSlice, error) {
 }
 
 func (s *scraper) scrapeAndAppendDiskIOMetric(metrics pdata.MetricSlice, now pdata.TimestampUnixNano, durationSinceLastScraped float64) error {
-	diskReadBytesPerSecValues, err := s.diskReadBytesPerSecCounter.ScrapeData()
+	diskReadBytesPerSecValues, err := scrapeDiskData(s.diskReadBytesPerSecCounter.ScrapeData)
 	if err != nil {
 		return err
 	}
 
-	diskWriteBytesPerSecValues, err := s.diskWriteBytesPerSecCounter.ScrapeData()
+	diskWriteBytesPerSecValues, err := scrapeDiskData(s.diskWriteBytesPerSecCounter.ScrapeData)
 	if err != nil {
 		return err
 	}
@@ -264,23 +265,23 @@ func (s *scraper) scrapeAndAppendDiskIOMetric(metrics pdata.MetricSlice, now pda
 }
 
 func (s *scraper) scrapeAndAppendDiskOpsMetric(metrics pdata.MetricSlice, now pdata.TimestampUnixNano, durationSinceLastScraped float64) error {
-	diskReadsPerSecValues, err := s.diskReadsPerSecCounter.ScrapeData()
+	diskReadsPerSecValues, err := scrapeDiskData(s.diskReadsPerSecCounter)
 	if err != nil {
 		return err
 	}
 
-	diskWritesPerSecValues, err := s.diskWritesPerSecCounter.ScrapeData()
+	diskWritesPerSecValues, err := scrapeDiskData(s.diskWritesPerSecCounter)
 	if err != nil {
 		return err
 	}
 
-	avgDiskSecsPerReadValues, err := s.avgDiskSecsPerReadCounter.ScrapeData()
+	avgDiskSecsPerReadValues, err := scrapeDiskData(s.avgDiskSecsPerReadCounter)
 	if err != nil {
 		return err
 	}
 	avgDiskSecsPerReadMap := toMap(avgDiskSecsPerReadValues)
 
-	avgDiskSecsPerWriteValues, err := s.avgDiskSecsPerWriteCounter.ScrapeData()
+	avgDiskSecsPerWriteValues, err := scrapeDiskData(s.avgDiskSecsPerWriteCounter)
 	if err != nil {
 		return err
 	}
@@ -330,7 +331,7 @@ func (s *scraper) scrapeAndAppendDiskOpsMetric(metrics pdata.MetricSlice, now pd
 }
 
 func (s *scraper) scrapeAndAppendDiskPendingOperationsMetric(metrics pdata.MetricSlice, now pdata.TimestampUnixNano) error {
-	diskQueueLengthValues, err := s.diskQueueLengthCounter.ScrapeData()
+	diskQueueLengthValues, err := scrapeDiskData(s.diskQueueLengthCounter)
 	if err != nil {
 		return err
 	}
@@ -408,6 +409,27 @@ func initializeDiskPendingDataPoint(dataPoint pdata.Int64DataPoint, now pdata.Ti
 	labelsMap.Insert(deviceLabelName, deviceLabel)
 	dataPoint.SetTimestamp(now)
 	dataPoint.SetValue(value)
+}
+
+func scrapeDiskData(counter pdh.PerfCounterScraper) ([]win_perf_counters.CounterValue, error) {
+	values, err := counter.ScrapeData()
+	if err != nil {
+		return err
+	}
+
+	// ignore recovery partitions which aren't mounted to a drive volume (appear as HarddiskVolume[1-9]+)
+	filteredValues := make([]win_perf_counters.CounterValue, 0, len(values))
+	for _, value := range values {
+		if !strings.HasPrefix(value.InstanceName, "HarddiskVolume") {
+			filteredValues = append(filteredValues, value)
+		}
+	}
+
+	if len(filteredValues) == 0 {
+		return values, nil
+	}
+
+	return filteredValues, nil
 }
 
 func (s *scraper) filterByDevice(values []win_perf_counters.CounterValue) []win_perf_counters.CounterValue {

@@ -91,6 +91,10 @@ func TestScrapeMetrics(t *testing.T) {
 			}
 
 			internal.AssertSameTimeStampForAllMetrics(t, metrics)
+
+			if runtime.GOOS == "windows" {
+				assertNoHarddiskVolumeLabels(t, metrics)
+			}
 		})
 	}
 }
@@ -121,4 +125,15 @@ func assertDiskPendingOperationsMetricValid(t *testing.T, metric pdata.Metric) {
 	internal.AssertDescriptorEqual(t, diskPendingOperationsDescriptor, metric.MetricDescriptor())
 	assert.GreaterOrEqual(t, metric.Int64DataPoints().Len(), 1)
 	internal.AssertInt64MetricLabelExists(t, metric, 0, deviceLabelName)
+}
+
+func assertNoHarddiskVolumeLabels(t *testing.T, metrics pdata.MetricSlice) {
+	for i := 0; i < metrics.Len(); i++ {
+		ddps := metrics.At(i).DoubleDataPoints()
+		for j := 0; j < ddps.Len(); j++ {
+			ddps.At(i).LabelsMap().ForEach(func(k string, v pdata.StringValue) {
+				require.NotRegexp(t, "$HarddiskVolume", k)
+			})
+		}
+	}
 }
