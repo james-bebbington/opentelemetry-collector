@@ -17,6 +17,8 @@
 package perfcounters
 
 import (
+	"fmt"
+
 	"go.opentelemetry.io/collector/internal/processor/filterset"
 )
 
@@ -67,4 +69,84 @@ func (obj mockPerfDataObjectError) Filter(includeFS, excludeFS filterset.FilterS
 
 func (obj mockPerfDataObjectError) GetValues(counterNames ...string) ([]*CounterValues, error) {
 	return nil, obj.getValuesErr
+}
+
+// MockPerfCounterScraper returns the supplied object / counter values on each
+// successive call to Scrape in the specified order.
+//
+// Example Usage:
+//
+// s := NewMockPerfCounterScraper(map[string]map[string][]int64{
+//     "Object1": map[string][]int64{
+//         "Counter1": []int64{1, 2},
+//         "Counter2": []int64{4},
+//     },
+// })
+//
+// s.Scrape().GetObject("Object1").GetValues("Counter1", "Counter2")
+//
+// ... 1st call returns []*CounterValues{ { Values: { "Counter1": 1, "Counter2": 4 } } }
+// ... 2nd call returns []*CounterValues{ { Values: { "Counter1": 2, "Counter2": 4 } } }
+
+type MockPerfCounterScraper struct {
+	objectsAndValuesToReturn map[string]map[string][]int64
+	timesCalled              int
+}
+
+func NewMockPerfCounterScraper(objectsAndValuesToReturn map[string]map[string][]int64) *MockPerfCounterScraper {
+	return &MockPerfCounterScraper{objectsAndValuesToReturn: objectsAndValuesToReturn}
+}
+
+func (p *MockPerfCounterScraper) Initialize(objects ...string) error {
+	return nil
+}
+
+func (p *MockPerfCounterScraper) Scrape() (PerfDataCollection, error) {
+	objectsAndValuesToReturn := make(map[string]map[string]int64, len(p.objectsAndValuesToReturn))
+	for objectName, countersToReturn := range p.objectsAndValuesToReturn {
+		valuesToReturn := make(map[string]int64, len(countersToReturn))
+		for counterName, orderedValuesToReturn := range countersToReturn {
+			returnIndex := p.timesCalled
+			if returnIndex >= len(orderedValuesToReturn) {
+				returnIndex = len(orderedValuesToReturn) - 1
+			}
+			valuesToReturn[counterName] = orderedValuesToReturn[returnIndex]
+		}
+		objectsAndValuesToReturn[objectName] = valuesToReturn
+	}
+
+	p.timesCalled++
+	return mockPerfDataCollection{objectsAndValuesToReturn: objectsAndValuesToReturn}, nil
+}
+
+type mockPerfDataCollection struct {
+	objectsAndValuesToReturn map[string]map[string]int64
+}
+
+func (p mockPerfDataCollection) GetObject(objectName string) (PerfDataObject, error) {
+	valuesToReturn, ok := p.objectsAndValuesToReturn[objectName]
+	if !ok {
+		return nil, fmt.Errorf("Unable to find object %q", objectName)
+	}
+
+	return mockPerfDataObject{valuesToReturn: valuesToReturn}, nil
+}
+
+type mockPerfDataObject struct {
+	valuesToReturn map[string]int64
+}
+
+func (obj mockPerfDataObject) Filter(includeFS, excludeFS filterset.FilterSet, includeTotal bool) {
+}
+
+func (obj mockPerfDataObject) GetValues(counterNames ...string) ([]*CounterValues, error) {
+	value := &CounterValues{Values: map[string]int64{}}
+	for _, counterName := range counterNames {
+		valueToReturn, ok := obj.valuesToReturn[counterName]
+		if !ok {
+			return nil, fmt.Errorf("Mock Perf Counter Scraper configured incorrectly. Return value for counter %q not specified", counterName)
+		}
+		value.Values[counterName] = valueToReturn
+	}
+	return []*CounterValues{value}, nil
 }
