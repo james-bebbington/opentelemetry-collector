@@ -6,9 +6,17 @@ receivers:
   windowsperfcounters:
     collection_interval: 1s
     perfcounters:
-      - object: "Memory"
+      - object: Memory
         counters:
-          - "Committed Bytes"
+          - Committed Bytes
+      - object: Processor
+        instances: "*"
+        counters:
+          - "% Processor Time"
+      - object: "Processor"
+        instances: [1, 2]
+        counters:
+          - "% Idle Time"
 
 exporters:
   logging:

@@ -27,17 +27,18 @@ import (
 )
 
 type mockPerfCounter struct {
+	path      string
 	scrapeErr error
 	closeErr  error
 }
 
-func newMockPerfCounter(scrapeErr, closeErr error) *mockPerfCounter {
-	return &mockPerfCounter{scrapeErr: scrapeErr, closeErr: closeErr}
+func newMockPerfCounter(path string, scrapeErr, closeErr error) *mockPerfCounter {
+	return &mockPerfCounter{path: path, scrapeErr: scrapeErr, closeErr: closeErr}
 }
 
 // Path
 func (mpc *mockPerfCounter) Path() string {
-	return ""
+	return mpc.path
 }
 
 // ScrapeData
@@ -51,29 +52,46 @@ func (mpc *mockPerfCounter) Close() error {
 }
 
 func Test_WindowsPerfCounterScraper(t *testing.T) {
+	type expectedMetric struct {
+		name                string
+		instanceLabelValues []string
+	}
+
 	type testCase struct {
 		name string
 		cfg  *Config
 
-		newErr        string
-		initializeErr string
-		scrapeErr     error
-		closeErr      error
+		newErr          string
+		initializeErr   string
+		mockCounterPath string
+		scrapeErr       error
+		closeErr        error
 
-		expectedMetrics int
+		expectedMetrics []expectedMetric
 	}
 
 	defaultConfig := &Config{
-		PerfCounters: []PerfCounterConfig{
-			{Object: "Memory", Counters: []string{"Committed Bytes"}},
-		},
+		PerfCounters:    []PerfCounterConfig{{Object: "Memory", Counters: []string{"Committed Bytes"}}},
 		ScraperSettings: receiverhelper.ScraperSettings{CollectionIntervalVal: time.Minute},
 	}
 
 	testCases := []testCase{
 		{
-			name:            "Standard",
-			expectedMetrics: 1,
+			name: "Standard",
+			cfg: &Config{
+				PerfCounters: []PerfCounterConfig{
+					{Object: "Memory", Counters: []string{"Committed Bytes"}},
+					{Object: "Processor", Instances: []string{"*"}, Counters: []string{"% Processor Time"}},
+					{Object: "Processor", Instances: []string{"1", "2"}, Counters: []string{"% Idle Time"}},
+				},
+				ScraperSettings: receiverhelper.ScraperSettings{CollectionIntervalVal: time.Minute},
+			},
+			expectedMetrics: []expectedMetric{
+				{name: `\Memory\Committed Bytes`},
+				{name: `\Processor(*)\% Processor Time`, instanceLabelValues: []string{"*"}},
+				{name: `\Processor(1)\% Idle Time`, instanceLabelValues: []string{"1"}},
+				{name: `\Processor(2)\% Idle Time`, instanceLabelValues: []string{"2"}},
+			},
 		},
 		{
 			name: "InvalidCounter",
@@ -86,7 +104,7 @@ func Test_WindowsPerfCounterScraper(t *testing.T) {
 				},
 				ScraperSettings: receiverhelper.ScraperSettings{CollectionIntervalVal: time.Minute},
 			},
-			initializeErr: "The specified object was not found on the computer.\r\n",
+			initializeErr: "error initializing counter \\Invalid Object\\Invalid Counter: The specified object was not found on the computer.\r\n",
 		},
 		{
 			name:      "ScrapeError",
@@ -94,7 +112,7 @@ func Test_WindowsPerfCounterScraper(t *testing.T) {
 		},
 		{
 			name:            "CloseError",
-			expectedMetrics: 1,
+			expectedMetrics: []expectedMetric{{name: ""}},
 			closeErr:        errors.New("err1"),
 		},
 	}
@@ -118,9 +136,9 @@ func Test_WindowsPerfCounterScraper(t *testing.T) {
 			}
 			require.NoError(t, err)
 
-			if test.scrapeErr != nil || test.closeErr != nil {
+			if test.mockCounterPath != "" || test.scrapeErr != nil || test.closeErr != nil {
 				for i := range scraper.counters {
-					scraper.counters[i] = newMockPerfCounter(test.scrapeErr, test.closeErr)
+					scraper.counters[i] = newMockPerfCounter(test.mockCounterPath, test.scrapeErr, test.closeErr)
 				}
 			}
 
@@ -131,7 +149,47 @@ func Test_WindowsPerfCounterScraper(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			assert.Equal(t, test.expectedMetrics, metrics.Len())
+			require.Equal(t, len(test.expectedMetrics), metrics.Len())
+			for i, e := range test.expectedMetrics {
+				metric := metrics.At(i)
+				assert.Equal(t, e.name, metric.Name())
+
+				ddp := metric.DoubleGauge().DataPoints()
+
+				var allInstances bool
+				for _, v := range e.instanceLabelValues {
+					if v == "*" {
+						allInstances = true
+						break
+					}
+				}
+
+				if allInstances {
+					require.GreaterOrEqual(t, ddp.Len(), 1)
+				} else {
+					expectedDataPoints := 1
+					if len(e.instanceLabelValues) > 0 {
+						expectedDataPoints = len(e.instanceLabelValues)
+					}
+
+					require.Equal(t, expectedDataPoints, ddp.Len())
+				}
+
+				if len(e.instanceLabelValues) > 0 {
+					instanceLabelValues := make([]string, 0, ddp.Len())
+					for i := 0; i < ddp.Len(); i++ {
+						instanceLabelValue, ok := ddp.At(i).LabelsMap().Get(instanceLabelName)
+						require.Truef(t, ok, "data point was missing %q label", instanceLabelName)
+						instanceLabelValues = append(instanceLabelValues, instanceLabelValue.Value())
+					}
+
+					if !allInstances {
+						for _, v := range e.instanceLabelValues {
+							assert.Contains(t, instanceLabelValues, v)
+						}
+					}
+				}
+			}
 
 			err = scraper.close(context.Background())
 			if test.closeErr != nil {
